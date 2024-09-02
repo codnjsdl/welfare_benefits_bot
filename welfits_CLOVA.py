@@ -195,7 +195,7 @@ def format_docs(docs):
 
 def rag_chain(question):
     if st.session_state.loading_text is None:
-        loading_text = extract_text_from_pdf("/content/sample_data/AK아이에스 복리후생 제도 매뉴얼.pdf")
+        loading_text = extract_text_from_pdf("AK아이에스 복리후생 제도 매뉴얼.pdf")
         st.session_state.loading_text = loading_text
     else:
         loading_text = st.session_state.loading_text
