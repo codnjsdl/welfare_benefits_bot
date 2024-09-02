@@ -1,0 +1,7 @@
+PyPDF2
+langchain
+line_profiler
+streamlit
+langchain_huggingface
+langchain-community
+chromadb
