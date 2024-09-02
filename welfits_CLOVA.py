@@ -12,12 +12,8 @@ from langchain_core.language_models.llms import LLM
 from langchain.globals import set_llm_cache
 from langchain.cache import InMemoryCache
 from PyPDF2 import PdfReader
-from line_profiler import LineProfiler
 from typing import Any, List, Mapping, Optional
 
-import sqlite3
-import sys
-sys.modules['sqlite3'] = sys.modules.pop('sqlite3')
 import streamlit as st
 
 # 세션 상태 초기화
@@ -100,7 +96,7 @@ class LlmClovaStudio(LLM):
         }
 
         response = requests.post(
-            self.host + "/testapp/v1/chat-completions/HCX-003",  # 본인이 finetunning 한 API 경로 , 일반 HCX03써도 무관합니다
+            self.host + "/testapp/v1/chat-completions/HCX-003",
             headers=headers,
             json=request_data,
             stream=True
@@ -119,13 +115,11 @@ class LlmClovaStudio(LLM):
 
         return last_data_content
 
-# 선언할때 테스트앱 생성해서 key 값을 받아오세요
 llm = LlmClovaStudio(
     host='https://clovastudio.stream.ntruss.com',
     api_key='NTA0MjU2MWZlZTcxNDJiY6+5UNhJXWh3gqmFLbiMpde7ehpEJAFPwFUIey9lGc0S',
     api_key_primary_val='VhkfehtF14qpXmZPIA6VRw6x1c1eDCXp3P6BfbrG',
-    # request_id='1e8ac996-b6e9-45f9-a64f-a64e37a029cf' #HCX-DASH-001
-    request_id='b9288b57-8e12-45cc-b378-49cc13d8dbb6' #HCX-003
+    request_id='b9288b57-8e12-45cc-b378-49cc13d8dbb6'
 )
 
 def extract_text_from_pdf(pdf_path, start_page=None, end_page=None):
@@ -147,9 +141,6 @@ def extract_text_from_pdf(pdf_path, start_page=None, end_page=None):
     return text
 
 def retrieve_docs(text, model_index=0):
-    if not text:
-        return "No text found in the PDF file."
-
     model_list = [
         'bespin-global/klue-sroberta-base-continue-learning-by-mnr',
         'BAAI/bge-m3',
@@ -170,20 +161,16 @@ def retrieve_docs(text, model_index=0):
     vectorstore_path = 'vectorstore_' + str(model_index)
     os.makedirs(vectorstore_path, exist_ok=True)
 
-    # 벡터 저장소를 전역으로 캐싱
     if vectorstore_path not in st.session_state.vectorstore_cache:
         if os.path.exists(os.path.join(vectorstore_path, "index")):
             vectorstore = Chroma(persist_directory=vectorstore_path, embedding_function=embeddings)
         else:
-            # 텍스트 분할
             docs = [Document(page_content=text)]
             text_splitter = RecursiveCharacterTextSplitter(chunk_size=250, chunk_overlap=50)
             splits = text_splitter.split_documents(docs)
-            # 벡터 저장소 생성
             vectorstore = Chroma.from_documents(splits, embeddings, persist_directory=vectorstore_path)
             vectorstore.persist()
 
-        # 세션 상태에 저장하여 재사용 가능하게 설정
         st.session_state.vectorstore_cache[vectorstore_path] = vectorstore
     else:
         vectorstore = st.session_state.vectorstore_cache[vectorstore_path]
@@ -194,8 +181,10 @@ def format_docs(docs):
     return "\n\n".join(doc.page_content for doc in docs)
 
 def rag_chain(question):
+    pdf_path = "AK아이에스 복리후생 제도 매뉴얼.pdf"
+
     if st.session_state.loading_text is None:
-        loading_text = extract_text_from_pdf("AK아이에스 복리후생 제도 매뉴얼.pdf")
+        loading_text = extract_text_from_pdf(pdf_path)
         st.session_state.loading_text = loading_text
     else:
         loading_text = st.session_state.loading_text
@@ -207,7 +196,7 @@ def rag_chain(question):
         retriever = st.session_state.retriever
 
     if isinstance(retriever, str):
-      return f"Error: {retriever}"
+        return f"Error: {retriever}"
 
     retrieved_docs = retriever.get_relevant_documents(question)
     formatted_context = format_docs(retrieved_docs)
@@ -223,8 +212,7 @@ def generate_response(question):
 
 set_llm_cache(InMemoryCache())
 st.title("AK아이에스 복리후생제도 알리미")
-st.markdown("현재 챗봇은 **테스트용**으로 운영 되고 있습니다. 사용에 참고 바랍니다.")
-# st.subheader('현재 챗봇은 테스트용으로 운영 되고 있습니다. 사용에 참고 바랍니다.')
+st.markdown("현재 챗봇은 **테스트용**으로 운영되고 있습니다. 사용에 참고 바랍니다.")
 
 if "messages" not in st.session_state:
     st.session_state["messages"] = [{"role": "assistant", "content": "무엇을 도와 드릴까요?"}]
