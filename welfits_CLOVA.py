@@ -196,7 +196,7 @@ def format_docs(docs):
 
 def rag_chain(question):
     if st.session_state.loading_text is None:
-        st.session_state.loading_text = extract_text_from_pdfs("/content/drive/MyDrive/Manual")
+        st.session_state.loading_text = extract_text_from_pdfs("/Manual")
 
     if st.session_state.retriever is None:
         st.session_state.retriever = retrieve_docs(st.session_state.loading_text)
