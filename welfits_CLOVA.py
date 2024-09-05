@@ -22,6 +22,9 @@ import sys
 sys.modules['sqlite3'] = sys.modules.pop('sqlite3')
 import streamlit as st
 
+# 환경 변수 설정
+implementation = os.getenv("PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION")
+
 # 세션 상태 초기화
 for key in ["loading_text", "retriever", "vectorstore_cache"]:
     if key not in st.session_state:
