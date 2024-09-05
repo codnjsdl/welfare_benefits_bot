@@ -1,3 +1,5 @@
+%%writefile app.py
+
 import os
 import json
 import requests
@@ -58,7 +60,7 @@ class LlmClovaStudio(LLM):
         run_manager: Optional[CallbackManagerForLLMRun] = None
     ) -> str:
         """
-        Make an API call to the ClovaStudio endpoint using the specified 
+        Make an API call to the ClovaStudio endpoint using the specified
         prompt and return the response.
         """
         if stop is not None:
@@ -78,8 +80,9 @@ class LlmClovaStudio(LLM):
         - 질문에 대한 답변이 불가능하면 '잘 모르겠습니다.'라고 답변합니다.
         - 업무와 무관한 질문에는 '업무 관련 질문만 답변 가능합니다.'라고 답변합니다.
         - 감사 인사나 칭찬에는 '감사합니다!'라고만 답변하세요.
+        - 여름, 하계와 같이 의미가 비슷한 단어들을 기반으로 질문을 해석하고 답변하세요.
         """
-        
+
         preset_text = [{"role": "system", "content": sys_prompt}, {"role": "user", "content": prompt}]
 
         request_data = {
@@ -103,7 +106,7 @@ class LlmClovaStudio(LLM):
             response.raise_for_status()  # 이 줄이 4XX 또는 5XX 오류를 감지합니다.
         except requests.exceptions.HTTPError as e:
             return f"Error in API request: {str(e)}"
-        
+
         # 스트림에서 마지막 'data:' 라인을 찾기 위한 로직
         last_data_content = ""
 
@@ -124,23 +127,31 @@ llm = LlmClovaStudio(
     request_id='59cf6478-2d5f-42e0-a562-a7a31e623d41' #HCX-003
 )
 
-def extract_text_from_pdf(pdf_path, start_page=None, end_page=None):
-    with open(pdf_path, 'rb') as file:
-        reader = PdfReader(file)
-        text = ""
+def extract_text_from_pdfs(folder_path, start_page=None, end_page=None):
+    all_text = ""
+    
+    # 폴더 내 모든 파일을 검색하여 PDF 파일만 처리
+    for filename in os.listdir(folder_path):
+        if filename.endswith(".pdf"):
+            pdf_path = os.path.join(folder_path, filename)
+            with open(pdf_path, 'rb') as file:
+                reader = PdfReader(file)
+                text = ""
 
-        if not start_page:
-            start_page = 0
-        else:
-            start_page -= 1
+                if not start_page:
+                    start_page = 0
+                else:
+                    start_page -= 1
 
-        if not end_page or end_page > len(reader.pages):
-            end_page = len(reader.pages)
+                if not end_page or end_page > len(reader.pages):
+                    end_page = len(reader.pages)
 
-        for page_num in range(start_page, end_page):
-            text += reader.pages[page_num].extract_text()
+                for page_num in range(start_page, end_page):
+                    text += reader.pages[page_num].extract_text()
 
-    return text
+                all_text += text  # 각 PDF 파일의 텍스트를 이어붙임
+    
+    return all_text
 
 def retrieve_docs(text, model_index=0):
     if not text:
@@ -170,7 +181,7 @@ def retrieve_docs(text, model_index=0):
             vectorstore = Chroma(persist_directory=vectorstore_path, embedding_function=embeddings)
         else:
             docs = [Document(page_content=text)]
-            text_splitter = RecursiveCharacterTextSplitter(chunk_size=250, chunk_overlap=50)
+            text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=50)
             splits = text_splitter.split_documents(docs)
             vectorstore = Chroma.from_documents(splits, embeddings, persist_directory=vectorstore_path)
             vectorstore.persist()
@@ -185,7 +196,7 @@ def format_docs(docs):
 
 def rag_chain(question):
     if st.session_state.loading_text is None:
-        st.session_state.loading_text = extract_text_from_pdf("AK아이에스 복리후생 제도 매뉴얼.pdf")
+        st.session_state.loading_text = extract_text_from_pdfs("/content/drive/MyDrive/Manual")
 
     if st.session_state.retriever is None:
         st.session_state.retriever = retrieve_docs(st.session_state.loading_text)
@@ -197,7 +208,7 @@ def rag_chain(question):
     retrieved_docs = retriever.get_relevant_documents(question)
     formatted_context = format_docs(retrieved_docs)
     formatted_prompt = f"Question: {question}\n\nContext: {formatted_context}"
-    
+
     response = llm.invoke(formatted_prompt)
     return response
 
