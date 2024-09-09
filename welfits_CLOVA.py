@@ -19,6 +19,7 @@ from langchain.cache import InMemoryCache
 from PyPDF2 import PdfReader
 from line_profiler import LineProfiler
 from typing import Any, List, Mapping, Optional
+from concurrent.futures import ThreadPoolExecutor
 
 import streamlit as st
 
@@ -128,29 +129,29 @@ llm = LlmClovaStudio(
 
 @st.cache_resource
 def extract_text_from_pdfs(folder_path, start_page=None, end_page=None):
+    def process_pdf(pdf_path):
+        with open(pdf_path, 'rb') as file:
+            reader = PdfReader(file)
+            text = ""
+            if not start_page:
+                start_page = 0
+            else:
+                start_page -= 1
+            if not end_page or end_page > len(reader.pages):
+                end_page = len(reader.pages)
+            for page_num in range(start_page, end_page):
+                text += reader.pages[page_num].extract_text()
+            return text
+
     all_text = ""
-    
-    # 폴더 내 모든 파일을 검색하여 PDF 파일만 처리
-    for filename in os.listdir(folder_path):
-        if filename.endswith(".pdf"):
-            pdf_path = os.path.join(folder_path, filename)
-            with open(pdf_path, 'rb') as file:
-                reader = PdfReader(file)
-                text = ""
+    pdf_files = [os.path.join(folder_path, f) for f in os.listdir(folder_path) if f.endswith(".pdf")]
 
-                if not start_page:
-                    start_page = 0
-                else:
-                    start_page -= 1
+    with ThreadPoolExecutor() as executor:
+        results = executor.map(process_pdf, pdf_files)
 
-                if not end_page or end_page > len(reader.pages):
-                    end_page = len(reader.pages)
+    for result in results:
+        all_text += result
 
-                for page_num in range(start_page, end_page):
-                    text += reader.pages[page_num].extract_text()
-
-                all_text += text  # 각 PDF 파일의 텍스트를 이어붙임
-    
     return all_text
 
 @st.cache_resource
@@ -177,12 +178,13 @@ def retrieve_docs(text, model_index=0):
     vectorstore_path = f'vectorstore_{model_index}'
     vectorstore = st.session_state.vectorstore_cache.get(vectorstore_path)
 
+    # 캐시된 벡터 스토어가 없을 때만 새로 생성
     if vectorstore is None:
         if os.path.exists(os.path.join(vectorstore_path, "index")):
             vectorstore = Chroma(persist_directory=vectorstore_path, embedding_function=embeddings)
         else:
             docs = [Document(page_content=text)]
-            text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=50)
+            text_splitter = RecursiveCharacterTextSplitter(chunk_size=1500, chunk_overlap=50)
             splits = text_splitter.split_documents(docs)
             vectorstore = Chroma.from_documents(splits, embeddings, persist_directory=vectorstore_path)
             vectorstore.persist()
