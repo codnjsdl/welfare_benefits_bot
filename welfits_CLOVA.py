@@ -154,7 +154,6 @@ def extract_text_from_pdfs(folder_path, start_page=None, end_page=None):
     
     return all_text
 
-@st.cache_resource
 def retrieve_docs(text, model_index=0):
     if not text:
         return "No text found in the PDF file."
