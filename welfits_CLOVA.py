@@ -129,29 +129,29 @@ llm = LlmClovaStudio(
 
 @st.cache_resource
 def extract_text_from_pdfs(folder_path, start_page=None, end_page=None):
-    def process_pdf(pdf_path):
-        with open(pdf_path, 'rb') as file:
-            reader = PdfReader(file)
-            text = ""
-            if not start_page:
-                start_page = 0
-            else:
-                start_page -= 1
-            if not end_page or end_page > len(reader.pages):
-                end_page = len(reader.pages)
-            for page_num in range(start_page, end_page):
-                text += reader.pages[page_num].extract_text()
-            return text
-
     all_text = ""
-    pdf_files = [os.path.join(folder_path, f) for f in os.listdir(folder_path) if f.endswith(".pdf")]
+    
+    # 폴더 내 모든 파일을 검색하여 PDF 파일만 처리
+    for filename in os.listdir(folder_path):
+        if filename.endswith(".pdf"):
+            pdf_path = os.path.join(folder_path, filename)
+            with open(pdf_path, 'rb') as file:
+                reader = PdfReader(file)
+                text = ""
 
-    with ThreadPoolExecutor() as executor:
-        results = executor.map(process_pdf, pdf_files)
+                if not start_page:
+                    start_page = 0
+                else:
+                    start_page -= 1
 
-    for result in results:
-        all_text += result
+                if not end_page or end_page > len(reader.pages):
+                    end_page = len(reader.pages)
 
+                for page_num in range(start_page, end_page):
+                    text += reader.pages[page_num].extract_text()
+
+                all_text += text  # 각 PDF 파일의 텍스트를 이어붙임
+    
     return all_text
 
 @st.cache_resource
