@@ -1,7 +1,12 @@
+__import__('pysqlite3')
+import sys
+sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+
 import os
 import json
 import requests
 import re
+import sqlite3
 
 from langchain.docstore.document import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -15,9 +20,6 @@ from PyPDF2 import PdfReader
 from line_profiler import LineProfiler
 from typing import Any, List, Mapping, Optional
 
-import sqlite3
-import sys
-sys.modules['sqlite3'] = sys.modules.pop('sqlite3')
 import streamlit as st
 
 # 세션 상태 초기화
