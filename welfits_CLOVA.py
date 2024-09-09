@@ -91,7 +91,7 @@ class LlmClovaStudio(LLM):
             "topK": 0,
             "maxTokens": 256,
             "temperature": 0.3,
-            "repeatPenalty": 1,
+            "repeatPenalty": 1.5,
             "stopBefore": [],
             "includeAiFilters": False
         }
@@ -184,7 +184,7 @@ def retrieve_docs(text, model_index=0):
             vectorstore = Chroma(persist_directory=vectorstore_path, embedding_function=embeddings)
         else:
             docs = [Document(page_content=text)]
-            text_splitter = RecursiveCharacterTextSplitter(chunk_size=1500, chunk_overlap=50)
+            text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=50)
             splits = text_splitter.split_documents(docs)
             vectorstore = Chroma.from_documents(splits, embeddings, persist_directory=vectorstore_path)
             vectorstore.persist()
