@@ -75,12 +75,11 @@ class LlmClovaStudio(LLM):
         }
 
         sys_prompt = """당신은 AK아이에스의 사내 규정 및 업무 가이드에 대해 간결하고 정확한 답변을 제공합니다.
-        - 회사의 규정, 정책, 업무 가이드에 대해서만 답변합니다.
-        - 제공된 정보(Context)만 사용하고, 추측하거나 추가 정보를 포함하지 않습니다.
-        - 질문에 대한 답변이 불가능하면 '잘 모르겠습니다.'라고 답변합니다.
-        - 업무와 무관한 질문에는 '업무 관련 질문만 답변 가능합니다.'라고 답변합니다.
-        - 감사 인사나 칭찬에는 '감사합니다!'라고만 답변하세요.
-        - 여름, 하계와 같이 의미가 비슷한 단어들을 기반으로 질문을 해석하고 답변하세요.
+        - Context에 있는 정보만 사용해 답변하며, 추측하거나 추가 정보 제공 금지
+        - 답변은 간결하고 명확하게, 핵심 정보만 전달
+        - 감정표현, 감사 인사, 칭찬에 대한 답변은 '감사합니다!'로만 응답하세요. 추가 설명 금지
+        - 회사, 업무와 관련 없는 질문에는 "죄송합니다. 저는 업무 관련 내용에만 답변할 수 있습니다."라고 답변
+        - Context에 정보가 없으면 '잘 모르겠습니다'라고 답변
         """
 
         preset_text = [{"role": "system", "content": sys_prompt}, {"role": "user", "content": prompt}]
@@ -91,7 +90,7 @@ class LlmClovaStudio(LLM):
             "topK": 0,
             "maxTokens": 256,
             "temperature": 0.3,
-            "repeatPenalty": 1.2,
+            "repeatPenalty": 1,
             "stopBefore": [],
             "includeAiFilters": False
         }
@@ -127,6 +126,7 @@ llm = LlmClovaStudio(
     request_id='59cf6478-2d5f-42e0-a562-a7a31e623d41' #HCX-003
 )
 
+@st.cache_resource
 def extract_text_from_pdfs(folder_path, start_page=None, end_page=None):
     all_text = ""
     
@@ -153,6 +153,7 @@ def extract_text_from_pdfs(folder_path, start_page=None, end_page=None):
     
     return all_text
 
+@st.cache_resource
 def retrieve_docs(text, model_index=0):
     if not text:
         return "No text found in the PDF file."
@@ -189,7 +190,6 @@ def retrieve_docs(text, model_index=0):
         st.session_state.vectorstore_cache[vectorstore_path] = vectorstore
 
     return vectorstore.as_retriever()
-
 
 def format_docs(docs):
     return "\n\n".join(doc.page_content for doc in docs)
