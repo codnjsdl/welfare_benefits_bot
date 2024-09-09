@@ -25,6 +25,8 @@ for key in ["loading_text", "retriever", "vectorstore_cache"]:
     if key not in st.session_state:
         st.session_state[key] = None if key != "vectorstore_cache" else {}
 
+data_path = os.path.join(os.path.dirname(__file__), "Manual")
+
 st.set_page_config(
     page_title="AK아이에스 복지제도 알리미",
     page_icon="🤖",
@@ -194,7 +196,7 @@ def format_docs(docs):
 
 def rag_chain(question):
     if st.session_state.loading_text is None:
-        st.session_state.loading_text = extract_text_from_pdfs("/Manual")
+        st.session_state.loading_text = extract_text_from_pdfs(data_path)
 
     if st.session_state.retriever is None:
         st.session_state.retriever = retrieve_docs(st.session_state.loading_text)
