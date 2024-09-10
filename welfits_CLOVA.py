@@ -1,7 +1,6 @@
 __import__('pysqlite3')
 import sys
-sys.modules['sqlite3'] = sys.modules.pop('sqlite3')
-import streamlit as st
+sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 
 import os
 import json
@@ -24,6 +23,8 @@ from io import BytesIO
 from datetime import datetime
 import pandas as pd
 import csv
+
+import streamlit as st
 
 # 세션 상태 초기화
 for key in ["loading_text", "retriever", "vectorstore_cache"]:
