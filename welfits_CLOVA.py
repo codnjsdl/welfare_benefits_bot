@@ -1,6 +1,7 @@
 __import__('pysqlite3')
 import sys
-sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+sys.modules['sqlite3'] = sys.modules.pop('sqlite3')
+import streamlit as st
 
 import os
 import json
@@ -19,9 +20,10 @@ from langchain.cache import InMemoryCache
 from PyPDF2 import PdfReader
 from line_profiler import LineProfiler
 from typing import Any, List, Mapping, Optional
-from concurrent.futures import ThreadPoolExecutor
-
-import streamlit as st
+from io import BytesIO
+from datetime import datetime
+import pandas as pd
+import csv
 
 # 세션 상태 초기화
 for key in ["loading_text", "retriever", "vectorstore_cache"]:
@@ -29,12 +31,13 @@ for key in ["loading_text", "retriever", "vectorstore_cache"]:
         st.session_state[key] = None if key != "vectorstore_cache" else {}
 
 st.set_page_config(
-    page_title="AK아이에스 복지제도 알리미",
+    page_title="AK아이에스 챗봇",
     page_icon="🤖",
-    layout="wide",
+    # layout="wide",
     initial_sidebar_state="expanded"
 )
 
+# HCX API 클래스
 class LlmClovaStudio(LLM):
     """
     Custom LLM class for using the ClovaStudio API.
@@ -91,7 +94,7 @@ class LlmClovaStudio(LLM):
             "topK": 0,
             "maxTokens": 256,
             "temperature": 0.3,
-            "repeatPenalty": 1.5,
+            "repeatPenalty": 1,
             "stopBefore": [],
             "includeAiFilters": False
         }
@@ -103,7 +106,7 @@ class LlmClovaStudio(LLM):
                 json=request_data,
                 stream=True
             )
-            response.raise_for_status()  # 이 줄이 4XX 또는 5XX 오류를 감지합니다.
+            response.raise_for_status()  # 4XX 또는 5XX 오류를 감지
         except requests.exceptions.HTTPError as e:
             return f"Error in API request: {str(e)}"
 
@@ -119,7 +122,7 @@ class LlmClovaStudio(LLM):
                     last_data_content = json.loads(decoded_line[5:])["message"]["content"]
 
         return last_data_content
-
+    
 llm = LlmClovaStudio(
     host='https://clovastudio.stream.ntruss.com',
     api_key='NTA0MjU2MWZlZTcxNDJiY4bBoTYomZr3ZI2tRU9B/sr5cjJ/cclnIpCb4trTnTT7',
@@ -127,11 +130,11 @@ llm = LlmClovaStudio(
     request_id='59cf6478-2d5f-42e0-a562-a7a31e623d41' #HCX-003
 )
 
-@st.cache_resource
+# 'Manual' 경로 내 pdf 파일 로딩
+@st.cache_resource(show_spinner=False)
 def extract_text_from_pdfs(folder_path, start_page=None, end_page=None):
     all_text = ""
     
-    # 폴더 내 모든 파일을 검색하여 PDF 파일만 처리
     for filename in os.listdir(folder_path):
         if filename.endswith(".pdf"):
             pdf_path = os.path.join(folder_path, filename)
@@ -154,10 +157,11 @@ def extract_text_from_pdfs(folder_path, start_page=None, end_page=None):
     
     return all_text
 
+# 벡터DB 임베딩 및 retriver 생성
+@st.cache_resource(show_spinner=False)
 def retrieve_docs(text, model_index=0):
-    if not text:
-        return "No text found in the PDF file."
-
+    vectorstore_path = 'vectorstore_' + str(model_index)
+ 
     model_list = [
         'bespin-global/klue-sroberta-base-continue-learning-by-mnr',
         'BAAI/bge-m3',
@@ -165,60 +169,49 @@ def retrieve_docs(text, model_index=0):
         'sentence-transformers/paraphrase-MiniLM-L6-v2'
     ]
 
-    embeddings = st.session_state.vectorstore_cache.get('embeddings')
-    if embeddings is None:
-        embeddings = HuggingFaceEmbeddings(
-            model_name=model_list[model_index],
-            model_kwargs={'device': 'cpu'},
-            encode_kwargs={'normalize_embeddings': True},
-        )
-        st.session_state.vectorstore_cache['embeddings'] = embeddings
+    embeddings = HuggingFaceEmbeddings(
+        model_name=model_list[model_index],
+        model_kwargs={'device': 'cpu'},
+        encode_kwargs={'normalize_embeddings': True},
+    )
 
-    vectorstore_path = f'vectorstore_{model_index}'
-    vectorstore = st.session_state.vectorstore_cache.get(vectorstore_path)
+    os.makedirs(vectorstore_path, exist_ok=True)
 
-    # 캐시된 벡터 스토어가 없을 때만 새로 생성
-    if vectorstore is None:
-        if os.path.exists(os.path.join(vectorstore_path, "index")):
-            vectorstore = Chroma(persist_directory=vectorstore_path, embedding_function=embeddings)
-        else:
-            docs = [Document(page_content=text)]
-            text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=50)
-            splits = text_splitter.split_documents(docs)
-            vectorstore = Chroma.from_documents(splits, embeddings, persist_directory=vectorstore_path)
-            vectorstore.persist()
-
-        st.session_state.vectorstore_cache[vectorstore_path] = vectorstore
+    if os.path.exists(os.path.join(vectorstore_path, "index")):
+        vectorstore = Chroma(persist_directory=vectorstore_path, embedding_function=embeddings)
+    else:
+        docs = [Document(page_content=text)]
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=200, chunk_overlap=50)
+        splits = text_splitter.split_documents(docs)
+        vectorstore = Chroma.from_documents(splits, embeddings, persist_directory=vectorstore_path)
+        vectorstore.persist()
 
     return vectorstore.as_retriever()
 
+# 줄바꿈 formatting
 def format_docs(docs):
     return "\n\n".join(doc.page_content for doc in docs)
 
+# RAG 핵심 함수
 def rag_chain(question):
-    if st.session_state.loading_text is None:
-        st.session_state.loading_text = extract_text_from_pdfs('Manual/')
+    loading_text = extract_text_from_pdfs("Manual/") # 1. PDF 로딩
+    retriever = retrieve_docs(loading_text) # 2. retriever 생성
 
-    if st.session_state.retriever is None:
-        st.session_state.retriever = retrieve_docs(st.session_state.loading_text)
-
-    retriever = st.session_state.retriever
-    if isinstance(retriever, str):
-        return f"Error: {retriever}"
-
-    retrieved_docs = retriever.get_relevant_documents(question)
-    formatted_context = format_docs(retrieved_docs)
-    formatted_prompt = f"Question: {question}\n\nContext: {formatted_context}"
-
-    response = llm.invoke(formatted_prompt)
+    retrieved_docs = retriever.invoke(question) # 3. retriever 통한 벡터DB에서 필요한 정보 검색
+    formatted_context = format_docs(retrieved_docs) # 4. formatting
+    formatted_prompt = f"Question: {question}\n\nContext: {formatted_context}" # 5. API 전달할 Input 생성
+    response = llm.invoke(formatted_prompt) # 6. API 통해 답변 생성
+    save_chat_to_csv(question, response, formatted_prompt) # 7. 채팅 기록 저장
     return response
 
-def generate_response(question):
-    result = rag_chain(question)
-    return re.sub(r"^(Answer:|답변:|답변|:|Answer)\s*", "", result)
+# 채팅 기록을 CSV 파일로 저장하는 함수
+def save_chat_to_csv(question, response, formatted_prompt):
+    with open('chat_history.csv', mode='a', newline='') as file:
+        writer = csv.writer(file)
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        writer.writerow([timestamp, "'"+question, "'"+response, "'"+formatted_prompt])
 
-set_llm_cache(InMemoryCache())
-st.title("AK아이에스 복리후생제도 알리미")
+st.title("AK아이에스 정보 알리미")
 st.markdown("현재 챗봇은 **테스트용**으로 운영되고 있습니다. 사용에 참고 바랍니다.")
 
 if "messages" not in st.session_state:
@@ -231,7 +224,8 @@ if prompt := st.chat_input():
     if prompt.strip():
         st.session_state.messages.append({"role": "user", "content": prompt})
         st.chat_message("user").write(prompt)
-        msg = generate_response(prompt)
+        with st.spinner('답변을 생성 중입니다...'):
+            msg = rag_chain(prompt)
         st.session_state.messages.append({"role": "assistant", "content": msg})
         st.chat_message("assistant").write(msg)
     else:
