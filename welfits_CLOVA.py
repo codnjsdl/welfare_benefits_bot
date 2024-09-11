@@ -134,29 +134,17 @@ llm = LlmClovaStudio(
 # 'Manual' 경로 내 pdf 파일 로딩
 @st.cache_resource(show_spinner=False)
 def extract_text_from_pdfs(folder_path, start_page=None, end_page=None):
-    all_text = ""
-    
+    text = ''
     for filename in os.listdir(folder_path):
         if filename.endswith(".pdf"):
             pdf_path = os.path.join(folder_path, filename)
             with open(pdf_path, 'rb') as file:
                 reader = PdfReader(file)
-                text = ""
-
-                if not start_page:
-                    start_page = 0
-                else:
-                    start_page -= 1
-
-                if not end_page or end_page > len(reader.pages):
-                    end_page = len(reader.pages)
-
+                start_page = start_page - 1 if start_page else 0
+                end_page = end_page if end_page and end_page <= len(reader.pages) else len(reader.pages)
                 for page_num in range(start_page, end_page):
                     text += reader.pages[page_num].extract_text()
-
-                all_text += text  # 각 PDF 파일의 텍스트를 이어붙임
-    
-    return all_text
+    return text
 
 # 벡터DB 임베딩 및 retriver 생성
 @st.cache_resource(show_spinner=False)
